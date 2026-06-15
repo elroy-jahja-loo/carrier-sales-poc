@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+*.log
+logs/
+.DS_Store
+.venv/
+.venv-smoke/
+dist/
+build/
+coverage/
+.coverage

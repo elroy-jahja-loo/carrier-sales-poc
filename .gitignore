@@ -1,4 +1,10 @@
 .env
+.env.*
+!.env.example
+*.log
+logs/
+coverage/
+.coverage
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -7,4 +13,11 @@ __pycache__/
 node_modules/
 .next/
 dist/
+build/
+.turbo/
+.cache/
 .venv-smoke/
+*.pem
+*.key
+*secret*
+*credentials*
