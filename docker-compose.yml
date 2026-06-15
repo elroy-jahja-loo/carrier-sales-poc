@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: carrier-sales-db
+    environment:
+      POSTGRES_DB: carrier_sales
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d carrier_sales"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: carrier-sales-backend
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      APP_API_KEY: ${APP_API_KEY:-change-me-local-api-key}
+      FMCSA_API_KEY: ${FMCSA_API_KEY:-replace-with-real-fmcsa-key}
+      FMCSA_BASE_URL: ${FMCSA_BASE_URL:-https://mobile.fmcsa.dot.gov/qc/services}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://postgres:postgres@db:5432/carrier_sales}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      NEGOTIATION_MAX_ROUNDS: ${NEGOTIATION_MAX_ROUNDS:-3}
+      DEFAULT_MAX_RATE_PREMIUM_PERCENT: ${DEFAULT_MAX_RATE_PREMIUM_PERCENT:-8}
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    container_name: carrier-sales-frontend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      SERVER_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://backend:8000}
+      SERVER_APP_API_KEY: ${APP_API_KEY:-change-me-local-api-key}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

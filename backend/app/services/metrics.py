@@ -1,0 +1,106 @@
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.models import CallRecord, CarrierVerification
+
+
+def get_metrics_summary(db: Session) -> dict:
+    total_calls = db.scalar(select(func.count(CallRecord.id))) or 0
+    verified_carriers = db.scalar(
+        select(func.count(CarrierVerification.id)).where(CarrierVerification.allowed_to_operate.is_(True))
+    ) or 0
+    ineligible_carriers = db.scalar(
+        select(func.count(CarrierVerification.id)).where(CarrierVerification.allowed_to_operate.is_(False))
+    ) or 0
+
+    outcome_counts_rows = db.execute(
+        select(CallRecord.outcome, func.count(CallRecord.id)).group_by(CallRecord.outcome)
+    ).all()
+    sentiment_counts_rows = db.execute(
+        select(CallRecord.sentiment, func.count(CallRecord.id)).group_by(CallRecord.sentiment)
+    ).all()
+
+    outcomes = {
+        "booked": 0,
+        "declined": 0,
+        "ineligible": 0,
+        "no_load_found": 0,
+        "unresolved": 0,
+        "transferred": 0,
+        "unknown": 0,
+    }
+    for outcome, count in outcome_counts_rows:
+        outcomes[str(outcome)] = count
+
+    sentiment = {"positive": 0, "neutral": 0, "negative": 0, "unknown": 0}
+    for sentiment_key, count in sentiment_counts_rows:
+        sentiment[str(sentiment_key)] = count
+
+    booked_calls = outcomes.get("booked", 0)
+    declined_calls = outcomes.get("declined", 0)
+    no_load_found_calls = outcomes.get("no_load_found", 0)
+    unresolved_calls = outcomes.get("unresolved", 0)
+
+    avg_final_offer = db.scalar(select(func.avg(CallRecord.final_offer)).where(CallRecord.final_offer.is_not(None)))
+    avg_loadboard_rate = db.scalar(
+        select(func.avg(CallRecord.loadboard_rate)).where(CallRecord.loadboard_rate.is_not(None))
+    )
+
+    average_final_offer = float(avg_final_offer or 0)
+    average_loadboard_rate = float(avg_loadboard_rate or 0)
+
+    average_premium_percent = 0.0
+    if average_loadboard_rate > 0:
+        average_premium_percent = ((average_final_offer - average_loadboard_rate) / average_loadboard_rate) * 100
+
+    booking_rate = float(booked_calls / total_calls) if total_calls else 0.0
+
+    bookings_over_time = _bookings_over_time(db)
+
+    return {
+        "total_calls": int(total_calls),
+        "verified_carriers": int(verified_carriers),
+        "ineligible_carriers": int(ineligible_carriers),
+        "booked_calls": int(booked_calls),
+        "declined_calls": int(declined_calls),
+        "no_load_found_calls": int(no_load_found_calls),
+        "unresolved_calls": int(unresolved_calls),
+        "booking_rate": round(booking_rate, 4),
+        "average_final_offer": round(average_final_offer, 2),
+        "average_loadboard_rate": round(average_loadboard_rate, 2),
+        "average_premium_percent": round(average_premium_percent, 2),
+        "sentiment": sentiment,
+        "outcomes": outcomes,
+        "bookings_over_time": bookings_over_time,
+    }
+
+
+def _bookings_over_time(db: Session) -> list[dict[str, int | str]]:
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=6)
+    rows = db.execute(
+        select(CallRecord.created_at)
+        .where(CallRecord.created_at >= start)
+        .order_by(CallRecord.created_at.asc())
+    ).scalars()
+
+    buckets = defaultdict(int)
+    for ts in rows:
+        day_key = ts.date().isoformat()
+        buckets[day_key] += 1
+
+    result = []
+    for day_offset in range(7):
+        day = (start + timedelta(days=day_offset)).date().isoformat()
+        result.append({"date": day, "calls": buckets.get(day, 0)})
+    return result
+
+
+def decimal_to_float(value: Decimal | None) -> float | None:
+    if value is None:
+        return None
+    return float(value)
