@@ -24,6 +24,7 @@ class HealthResponse(BaseModel):
 
 class CarrierVerifyRequest(BaseModel):
     mc_number: str = Field(min_length=1)
+    session_id: str | None = None
 
 
 class CarrierVerifyResponse(BaseModel):
@@ -46,6 +47,7 @@ class LoadSearchRequest(BaseModel):
     equipment_type: str | None = None
     pickup_date: date | None = None
     mc_number: str | None = None
+    session_id: str | None = None
 
     @field_validator("pickup_date", mode="before")
     @classmethod
@@ -141,8 +143,18 @@ class CallCompleteRequest(BaseModel):
     origin: str | None = None
     destination: str | None = None
     equipment_type: str | None = None
+    pickup_datetime: datetime | None = None
+    delivery_datetime: datetime | None = None
     loadboard_rate: Decimal | None = None
     final_offer: Decimal | None = None
+    commodity_type: str | None = None
+    weight: int | None = None
+    miles: int | None = None
+    num_of_pieces: int | None = None
+    dimensions: str | None = None
+    transfer_successful: bool | None = None
+    failure_reason: str | None = None
+    call_duration_seconds: int | None = None
     outcome: str = "unknown"
     sentiment: str = "unknown"
     call_summary: str | None = None
@@ -165,6 +177,15 @@ class CallCompleteRequest(BaseModel):
             return 0
         return _parse_int(value)
 
+    @field_validator("weight", "miles", "num_of_pieces", "call_duration_seconds", mode="before")
+    @classmethod
+    def parse_optional_ints(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return _parse_int(value)
+
 
 class CallCompleteResponse(BaseModel):
     stored: bool
@@ -182,8 +203,18 @@ class CallRecordItem(BaseModel):
     origin: str | None = None
     destination: str | None = None
     equipment_type: str | None = None
+    pickup_datetime: datetime | None = None
+    delivery_datetime: datetime | None = None
     loadboard_rate: Decimal | None = None
     final_offer: Decimal | None = None
+    commodity_type: str | None = None
+    weight: int | None = None
+    miles: int | None = None
+    num_of_pieces: int | None = None
+    dimensions: str | None = None
+    transfer_successful: bool | None = None
+    failure_reason: str | None = None
+    call_duration_seconds: int | None = None
     outcome: OutcomeType
     sentiment: SentimentType
     call_summary: str | None = None
@@ -212,6 +243,12 @@ class MetricsSummaryResponse(BaseModel):
     average_final_offer: float
     average_loadboard_rate: float
     average_premium_percent: float
+    average_accepted_rate: float
+    average_accepted_loadboard_rate: float
+    average_accepted_premium_percent: float
+    average_negotiation_rounds: float
+    negotiation_acceptance_rate: float
+    follow_up_count: int
     sentiment: dict[str, int]
     outcomes: dict[str, int]
     bookings_over_time: list[dict[str, int | str]]

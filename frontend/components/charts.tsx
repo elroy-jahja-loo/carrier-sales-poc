@@ -90,7 +90,7 @@ export function RateComparisonChart({
   ];
   return (
     <div className="glass rounded-2xl p-4 shadow-soft">
-      <h3 className="mb-3 font-display text-lg">Average Final Offer vs Loadboard</h3>
+      <h3 className="mb-3 font-display text-lg">Accepted Rate vs Loadboard</h3>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data}>

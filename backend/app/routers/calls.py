@@ -31,24 +31,47 @@ def complete_call(payload: CallCompleteRequest, db: Session = Depends(get_db)) -
     outcome = payload.outcome if payload.outcome in VALID_OUTCOMES else "unknown"
     sentiment = payload.sentiment if payload.sentiment in VALID_SENTIMENTS else "unknown"
 
-    record = CallRecord(
-        happyrobot_run_id=payload.happyrobot_run_id,
-        session_id=payload.session_id,
-        mc_number=payload.mc_number,
-        carrier_name=payload.carrier_name,
-        load_id=payload.load_id,
-        origin=payload.origin,
-        destination=payload.destination,
-        equipment_type=payload.equipment_type,
-        loadboard_rate=payload.loadboard_rate,
-        final_offer=payload.final_offer,
-        outcome=outcome,
-        sentiment=sentiment,
-        call_summary=payload.call_summary,
-        transcript=payload.transcript,
-        negotiation_rounds=payload.negotiation_rounds,
-    )
-    db.add(record)
+    record = None
+    if payload.happyrobot_run_id:
+        record = db.execute(
+            select(CallRecord).where(CallRecord.happyrobot_run_id == payload.happyrobot_run_id)
+        ).scalar_one_or_none()
+
+    values = {
+        "happyrobot_run_id": payload.happyrobot_run_id,
+        "session_id": payload.session_id,
+        "mc_number": payload.mc_number,
+        "carrier_name": payload.carrier_name,
+        "load_id": payload.load_id,
+        "origin": payload.origin,
+        "destination": payload.destination,
+        "equipment_type": payload.equipment_type,
+        "pickup_datetime": payload.pickup_datetime,
+        "delivery_datetime": payload.delivery_datetime,
+        "loadboard_rate": payload.loadboard_rate,
+        "final_offer": payload.final_offer,
+        "commodity_type": payload.commodity_type,
+        "weight": payload.weight,
+        "miles": payload.miles,
+        "num_of_pieces": payload.num_of_pieces,
+        "dimensions": payload.dimensions,
+        "transfer_successful": payload.transfer_successful,
+        "failure_reason": payload.failure_reason,
+        "call_duration_seconds": payload.call_duration_seconds,
+        "outcome": outcome,
+        "sentiment": sentiment,
+        "call_summary": payload.call_summary,
+        "transcript": payload.transcript,
+        "negotiation_rounds": payload.negotiation_rounds,
+    }
+
+    if record:
+        for key, value in values.items():
+            setattr(record, key, value)
+    else:
+        record = CallRecord(**values)
+        db.add(record)
+
     db.commit()
     db.refresh(record)
 

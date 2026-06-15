@@ -94,8 +94,18 @@ class CallRecord(Base):
     origin: Mapped[str | None] = mapped_column(String(255), nullable=True)
     destination: Mapped[str | None] = mapped_column(String(255), nullable=True)
     equipment_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    pickup_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     loadboard_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     final_offer: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    commodity_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    weight: Mapped[int | None] = mapped_column(nullable=True)
+    miles: Mapped[int | None] = mapped_column(nullable=True)
+    num_of_pieces: Mapped[int | None] = mapped_column(nullable=True)
+    dimensions: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    transfer_successful: Mapped[bool | None] = mapped_column(nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    call_duration_seconds: Mapped[int | None] = mapped_column(nullable=True)
     outcome: Mapped[str] = mapped_column(
         Enum(
             "booked",

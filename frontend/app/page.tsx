@@ -30,13 +30,13 @@ export default async function DashboardPage() {
         <KpiCard label="Total Calls" value={String(summary.total_calls)} />
         <KpiCard label="Booking Rate" value={pct(summary.booking_rate)} />
         <KpiCard label="Booked Loads" value={String(summary.booked_calls)} />
-        <KpiCard label="Avg Final Rate" value={currency(summary.average_final_offer)} />
+        <KpiCard label="Avg Accepted Rate" value={currency(summary.average_accepted_rate)} subtext="Booked/transferred calls only" />
         <KpiCard
-          label="Avg Premium vs Loadboard"
-          value={`${summary.average_premium_percent.toFixed(1)}%`}
-          subtext={`Loadboard avg ${currency(summary.average_loadboard_rate)}`}
+          label="Avg Accepted Premium vs Loadboard"
+          value={`${summary.average_accepted_premium_percent.toFixed(1)}%`}
+          subtext="Average per accepted call"
         />
-        <KpiCard label="Ineligible Carriers" value={String(summary.ineligible_carriers)} />
+        <KpiCard label="Follow-up / Exceptions" value={String(summary.follow_up_count)} subtext="Declined, no-load, unresolved, ineligible" />
       </section>
 
       <section className="mb-8 grid gap-4 lg:grid-cols-2">
@@ -44,8 +44,8 @@ export default async function DashboardPage() {
         <SentimentChart data={sentimentData} />
         <VolumeChart data={summary.bookings_over_time} />
         <RateComparisonChart
-          loadboard={summary.average_loadboard_rate}
-          finalOffer={summary.average_final_offer}
+          loadboard={summary.average_accepted_loadboard_rate}
+          finalOffer={summary.average_accepted_rate}
         />
       </section>
 

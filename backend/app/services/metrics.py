@@ -45,17 +45,39 @@ def get_metrics_summary(db: Session) -> dict:
     no_load_found_calls = outcomes.get("no_load_found", 0)
     unresolved_calls = outcomes.get("unresolved", 0)
 
-    avg_final_offer = db.scalar(select(func.avg(CallRecord.final_offer)).where(CallRecord.final_offer.is_not(None)))
+    accepted_filter = CallRecord.outcome.in_(["booked", "transferred"])
+    avg_final_offer = db.scalar(
+        select(func.avg(CallRecord.final_offer)).where(accepted_filter, CallRecord.final_offer.is_not(None))
+    )
     avg_loadboard_rate = db.scalar(
-        select(func.avg(CallRecord.loadboard_rate)).where(CallRecord.loadboard_rate.is_not(None))
+        select(func.avg(CallRecord.loadboard_rate)).where(
+            accepted_filter,
+            CallRecord.final_offer.is_not(None),
+            CallRecord.loadboard_rate.is_not(None),
+        )
     )
 
     average_final_offer = float(avg_final_offer or 0)
     average_loadboard_rate = float(avg_loadboard_rate or 0)
 
-    average_premium_percent = 0.0
-    if average_loadboard_rate > 0:
-        average_premium_percent = ((average_final_offer - average_loadboard_rate) / average_loadboard_rate) * 100
+    avg_premium = db.scalar(
+        select(
+            func.avg(
+                ((CallRecord.final_offer - CallRecord.loadboard_rate) / CallRecord.loadboard_rate) * 100
+            )
+        ).where(
+            accepted_filter,
+            CallRecord.final_offer.is_not(None),
+            CallRecord.loadboard_rate.is_not(None),
+            CallRecord.loadboard_rate > 0,
+        )
+    )
+    average_premium_percent = float(avg_premium or 0)
+    average_negotiation_rounds = db.scalar(
+        select(func.avg(CallRecord.negotiation_rounds)).where(CallRecord.negotiation_rounds.is_not(None))
+    )
+    negotiated_calls = db.scalar(select(func.count(CallRecord.id)).where(CallRecord.negotiation_rounds > 0)) or 0
+    negotiation_acceptance_rate = float(booked_calls / negotiated_calls) if negotiated_calls else 0.0
 
     booking_rate = float(booked_calls / total_calls) if total_calls else 0.0
 
@@ -73,6 +95,12 @@ def get_metrics_summary(db: Session) -> dict:
         "average_final_offer": round(average_final_offer, 2),
         "average_loadboard_rate": round(average_loadboard_rate, 2),
         "average_premium_percent": round(average_premium_percent, 2),
+        "average_accepted_rate": round(average_final_offer, 2),
+        "average_accepted_loadboard_rate": round(average_loadboard_rate, 2),
+        "average_accepted_premium_percent": round(average_premium_percent, 2),
+        "average_negotiation_rounds": round(float(average_negotiation_rounds or 0), 2),
+        "negotiation_acceptance_rate": round(negotiation_acceptance_rate, 4),
+        "follow_up_count": int(declined_calls + no_load_found_calls + unresolved_calls + outcomes.get("ineligible", 0)),
         "sentiment": sentiment,
         "outcomes": outcomes,
         "bookings_over_time": bookings_over_time,

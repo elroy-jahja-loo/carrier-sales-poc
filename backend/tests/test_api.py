@@ -19,6 +19,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.demo_data import build_demo_loads
 from app.models import Load
+from app.models import CallRecord
 from app.reset_demo_data import reset_demo_data
 from app.services.fmcsa import _extract_carrier_data, normalize_mc_number
 
@@ -70,6 +71,14 @@ def test_api_key_required():
     assert response.status_code == 401
 
 
+def test_carrier_verify_request_accepts_optional_session_id():
+    from app.schemas import CarrierVerifyRequest
+
+    payload = CarrierVerifyRequest(mc_number="MC-135797", session_id="hr-run-123")
+    assert payload.mc_number == "MC-135797"
+    assert payload.session_id == "hr-run-123"
+
+
 def test_load_search_returns_load():
     response = client.post(
         "/api/loads/search",
@@ -116,6 +125,15 @@ def test_load_search_returns_load():
 )
 def test_load_search_accepts_empty_optional_pickup_date(payload):
     response = client.post("/api/loads/search", headers=api_headers(), json=payload)
+    assert response.status_code == 200
+
+
+def test_load_search_accepts_optional_session_id():
+    response = client.post(
+        "/api/loads/search",
+        headers=api_headers(),
+        json={"session_id": "hr-run-123", "origin": "Kansas City, MO", "equipment_type": "Dry Van"},
+    )
     assert response.status_code == 200
 
 
@@ -246,6 +264,66 @@ def test_offer_evaluate_counters_above_max():
     assert response.json()["decision"] == "counter"
 
 
+def test_offer_evaluate_round_three_too_high_is_final_offer():
+    response = client.post(
+        "/api/offers/evaluate",
+        headers=api_headers(),
+        json={
+            "session_id": "session_round_3",
+            "mc_number": "123456",
+            "load_id": "LD-1001",
+            "carrier_offer": 9999,
+            "round_number": 3,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["decision"] == "counter"
+    assert payload["next_action"] == "accept_or_decline"
+    assert "best and final" in payload["message_to_carrier"]
+
+
+def test_offer_evaluate_round_four_too_high_declines_no_agreement():
+    response = client.post(
+        "/api/offers/evaluate",
+        headers=api_headers(),
+        json={
+            "session_id": "session_round_4",
+            "mc_number": "123456",
+            "load_id": "LD-1001",
+            "carrier_offer": 9999,
+            "round_number": 4,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["decision"] == "decline"
+    assert payload["next_action"] == "no_agreement"
+
+
+def test_offer_evaluate_declines_unavailable_load():
+    client.post(
+        "/api/transfer/mock",
+        headers=api_headers(),
+        json={"session_id": "hold-load", "mc_number": "123456", "load_id": "LD-1001", "accepted_rate": 2400},
+    )
+    response = client.post(
+        "/api/offers/evaluate",
+        headers=api_headers(),
+        json={
+            "session_id": "session_unavailable",
+            "mc_number": "123456",
+            "load_id": "LD-1001",
+            "carrier_offer": 2400,
+            "round_number": 1,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["decision"] == "decline"
+    assert payload["next_action"] == "search_again"
+
+
 def test_call_completion_stores_record():
     response = client.post(
         "/api/calls/complete",
@@ -267,6 +345,49 @@ def test_metrics_summary_fields_present():
     payload = response.json()
     for key in ["total_calls", "booking_rate", "sentiment", "outcomes"]:
         assert key in payload
+
+
+def test_metrics_accepted_rates_exclude_non_accepted_calls():
+    db = TestingSessionLocal()
+    try:
+        db.add_all(
+            [
+                CallRecord(
+                    happyrobot_run_id="metric-booked-1",
+                    loadboard_rate=Decimal("1000"),
+                    final_offer=Decimal("1100"),
+                    outcome="booked",
+                    sentiment="positive",
+                    negotiation_rounds=1,
+                ),
+                CallRecord(
+                    happyrobot_run_id="metric-transferred-1",
+                    loadboard_rate=Decimal("2000"),
+                    final_offer=Decimal("2200"),
+                    outcome="transferred",
+                    sentiment="positive",
+                    negotiation_rounds=2,
+                ),
+                CallRecord(
+                    happyrobot_run_id="metric-declined-1",
+                    loadboard_rate=Decimal("1000"),
+                    final_offer=Decimal("5000"),
+                    outcome="declined",
+                    sentiment="negative",
+                    negotiation_rounds=3,
+                ),
+            ]
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get("/api/metrics/summary", headers=api_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["average_accepted_rate"] == 1650
+    assert payload["average_accepted_loadboard_rate"] == 1500
+    assert payload["average_accepted_premium_percent"] == 10
 
 
 def test_offer_evaluate_accepts_happyrobot_string_payload():
@@ -328,6 +449,43 @@ def test_call_complete_accepts_happyrobot_string_numbers():
     assert response.json()["stored"] is True
 
 
+def test_call_complete_accepts_new_optional_fields_and_is_idempotent():
+    payload = {
+        "happyrobot_run_id": "idempotent-run-1",
+        "session_id": "idempotent-run-1",
+        "mc_number": "135797",
+        "load_id": "LD-1001",
+        "pickup_datetime": "2026-06-18T09:00:00Z",
+        "delivery_datetime": "2026-06-19T12:00:00Z",
+        "commodity_type": "Paper products",
+        "weight": "33000",
+        "miles": "438",
+        "num_of_pieces": "20",
+        "dimensions": "53ft trailer",
+        "transfer_successful": True,
+        "failure_reason": "",
+        "call_duration_seconds": "240",
+        "outcome": "booked",
+        "sentiment": "positive",
+        "call_summary": "Initial summary",
+    }
+    first = client.post("/api/calls/complete", headers=api_headers(), json=payload)
+    assert first.status_code == 200
+    record_id = first.json()["call_record_id"]
+
+    payload["call_summary"] = "Updated summary"
+    second = client.post("/api/calls/complete", headers=api_headers(), json=payload)
+    assert second.status_code == 200
+    assert second.json()["call_record_id"] == record_id
+
+    calls = client.get("/api/metrics/calls?limit=50", headers=api_headers()).json()["calls"]
+    matching = [item for item in calls if item["happyrobot_run_id"] == "idempotent-run-1"]
+    assert len(matching) == 1
+    assert matching[0]["call_summary"] == "Updated summary"
+    assert matching[0]["transfer_successful"] is True
+    assert matching[0]["call_duration_seconds"] == 240
+
+
 def test_call_complete_empty_rate_strings_and_rounds():
     response = client.post(
         "/api/calls/complete",
@@ -336,6 +494,19 @@ def test_call_complete_empty_rate_strings_and_rounds():
     )
     assert response.status_code == 200
     assert response.json()["stored"] is True
+
+
+def test_call_complete_invalid_outcome_sentiment_defaults_unknown():
+    response = client.post(
+        "/api/calls/complete",
+        headers=api_headers(),
+        json={"happyrobot_run_id": "invalid-classification", "outcome": "bad", "sentiment": "weird"},
+    )
+    assert response.status_code == 200
+    calls = client.get("/api/metrics/calls?limit=50", headers=api_headers()).json()["calls"]
+    matching = [item for item in calls if item["happyrobot_run_id"] == "invalid-classification"]
+    assert matching[0]["outcome"] == "unknown"
+    assert matching[0]["sentiment"] == "unknown"
 
 
 @pytest.mark.parametrize(

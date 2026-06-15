@@ -32,6 +32,18 @@ def evaluate_offer(
             "next_action": "end_or_search_again",
         }
 
+    if load.status != "available":
+        return {
+            "decision": "decline",
+            "status": "declined",
+            "load_id": load_id,
+            "carrier_offer": carrier_offer,
+            "round_count": round_number,
+            "max_rounds": max_rounds,
+            "message_to_carrier": "That load is no longer available. I can check for another load on that lane.",
+            "next_action": "search_again",
+        }
+
     negotiation = db.execute(
         select(NegotiationSession).where(
             NegotiationSession.session_id == session_id,
@@ -109,7 +121,7 @@ def evaluate_offer(
                 "I'm sorry, we can't make that rate work on this load. "
                 "I can check for another load or have someone follow up."
             ),
-            "next_action": "end_or_search_again",
+            "next_action": "no_agreement",
         }
 
     if negotiation.round_count == 1:
@@ -146,14 +158,24 @@ def evaluate_offer(
         "counter_offer": counter_offer,
         "round_count": negotiation.round_count,
         "max_rounds": max_rounds,
-        "message_to_carrier": (
-            f"I can't get to {format_currency_whole(carrier_offer)}, "
-            f"but I can offer {format_currency_whole(counter_offer)}. "
-            "Would that work for you?"
-        ),
-        "next_action": "continue_negotiation",
+        "message_to_carrier": _counter_message(carrier_offer, counter_offer, negotiation.round_count, max_rounds),
+        "next_action": "accept_or_decline" if negotiation.round_count >= max_rounds else "continue_negotiation",
     }
 
 
 def _currency(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _counter_message(carrier_offer: Decimal, counter_offer: Decimal, round_count: int, max_rounds: int) -> str:
+    if round_count >= max_rounds:
+        return (
+            f"I can't get to {format_currency_whole(carrier_offer)}. "
+            f"My best and final offer is {format_currency_whole(counter_offer)}. "
+            "Can you accept that rate?"
+        )
+    return (
+        f"I can't get to {format_currency_whole(carrier_offer)}, "
+        f"but I can offer {format_currency_whole(counter_offer)}. "
+        "Would that work for you?"
+    )

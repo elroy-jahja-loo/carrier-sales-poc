@@ -1,7 +1,7 @@
 import { CallsResponse, MetricsSummary } from "./types";
 
 const serverBaseUrl = process.env.SERVER_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-const serverApiKey = process.env.SERVER_APP_API_KEY || process.env.NEXT_PUBLIC_APP_API_KEY || "change-me-local-api-key";
+const serverApiKey = process.env.SERVER_APP_API_KEY || "change-me-local-api-key";
 
 async function fetchBackend<T>(path: string): Promise<T> {
   const response = await fetch(`${serverBaseUrl}${path}`, {
