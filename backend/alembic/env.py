@@ -6,13 +6,13 @@ from alembic import context as alembic_context  # type: ignore[attr-defined]
 from sqlalchemy import engine_from_config, pool
 
 from app.config import get_settings
-from app.database import Base
+from app.database import Base, get_sqlalchemy_database_url
 from app import models  # noqa: F401
 
 
 config = alembic_context.config
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+config.set_main_option("sqlalchemy.url", get_sqlalchemy_database_url(settings.database_url))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
