@@ -151,6 +151,75 @@ def test_metrics_summary_fields_present():
         assert key in payload
 
 
+def test_offer_evaluate_accepts_happyrobot_string_payload():
+    response = client.post(
+        "/api/offers/evaluate",
+        headers=api_headers(),
+        json={
+            "session_id": "test-run-1",
+            "mc_number": "135797",
+            "load_id": "LD-T1",
+            "carrier_offer": " $2,500 ",
+            "round_number": "1",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["decision"] == "accept"
+    assert payload["round_count"] == 1
+
+
+def test_mock_transfer_accepts_happyrobot_string_rate():
+    response = client.post(
+        "/api/transfer/mock",
+        headers=api_headers(),
+        json={
+            "session_id": "test-run-2",
+            "mc_number": "135797",
+            "load_id": "LD-T1",
+            "accepted_rate": " 1,900 ",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["load_status"] == "held"
+
+
+def test_call_complete_accepts_happyrobot_string_numbers():
+    response = client.post(
+        "/api/calls/complete",
+        headers=api_headers(),
+        json={
+            "happyrobot_run_id": "test-run-3",
+            "session_id": "test-run-3",
+            "mc_number": "135797",
+            "carrier_name": "Test Carrier",
+            "load_id": "LD-T1",
+            "origin": "Kansas City, MO",
+            "destination": "Minneapolis, MN",
+            "equipment_type": "Dry Van",
+            "loadboard_rate": "1900",
+            "final_offer": "$1,900",
+            "outcome": "booked",
+            "sentiment": "positive",
+            "call_summary": "Carrier booked load LD-T1 at 1900.",
+            "transcript": "Test transcript",
+            "negotiation_rounds": "1",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["stored"] is True
+
+
+def test_call_complete_empty_rate_strings_and_rounds():
+    response = client.post(
+        "/api/calls/complete",
+        headers=api_headers(),
+        json={"loadboard_rate": "", "final_offer": " ", "negotiation_rounds": ""},
+    )
+    assert response.status_code == 200
+    assert response.json()["stored"] is True
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [

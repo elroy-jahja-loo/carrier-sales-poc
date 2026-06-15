@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 OutcomeType = Literal[
@@ -80,6 +80,16 @@ class OfferEvaluateRequest(BaseModel):
     carrier_offer: Decimal
     round_number: int
 
+    @field_validator("carrier_offer", mode="before")
+    @classmethod
+    def parse_carrier_offer(cls, value):
+        return _parse_money(value)
+
+    @field_validator("round_number", mode="before")
+    @classmethod
+    def parse_round_number(cls, value):
+        return _parse_int(value)
+
 
 class OfferEvaluateResponse(BaseModel):
     decision: Literal["accept", "counter", "decline"]
@@ -99,6 +109,11 @@ class MockTransferRequest(BaseModel):
     mc_number: str
     load_id: str
     accepted_rate: Decimal
+
+    @field_validator("accepted_rate", mode="before")
+    @classmethod
+    def parse_accepted_rate(cls, value):
+        return _parse_money(value)
 
 
 class MockTransferResponse(BaseModel):
@@ -124,6 +139,22 @@ class CallCompleteRequest(BaseModel):
     call_summary: str | None = None
     transcript: str | None = None
     negotiation_rounds: int | None = None
+
+    @field_validator("loadboard_rate", "final_offer", mode="before")
+    @classmethod
+    def parse_optional_money(cls, value):
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return _parse_money(value)
+
+    @field_validator("negotiation_rounds", mode="before")
+    @classmethod
+    def parse_optional_rounds(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str) and value.strip() == "":
+            return 0
+        return _parse_int(value)
 
 
 class CallCompleteResponse(BaseModel):
@@ -175,3 +206,15 @@ class MetricsSummaryResponse(BaseModel):
     sentiment: dict[str, int]
     outcomes: dict[str, int]
     bookings_over_time: list[dict[str, int | str]]
+
+
+def _parse_money(value):
+    if isinstance(value, str):
+        return value.replace("$", "").replace(",", "").strip()
+    return value
+
+
+def _parse_int(value):
+    if isinstance(value, str):
+        return value.strip()
+    return value
