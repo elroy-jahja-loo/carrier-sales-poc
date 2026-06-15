@@ -1,7 +1,9 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import and_, func, select
+from typing import Any
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Load
@@ -16,23 +18,29 @@ def search_loads(
     pickup_date: date | None,
     limit: int = 3,
 ) -> list[Load]:
-    stmt = select(Load).where(Load.status == "available")
+    origin_filter = _contains(Load.origin, origin)
+    destination_filter = _contains(Load.destination, destination)
+    equipment_filter = _contains(Load.equipment_type, equipment_type)
+    pickup_filter = func.date(Load.pickup_datetime) == pickup_date if pickup_date else None
 
-    filters = []
-    if origin:
-        filters.append(func.lower(Load.origin).contains(origin.lower()))
-    if destination:
-        filters.append(func.lower(Load.destination).contains(destination.lower()))
-    if equipment_type:
-        filters.append(func.lower(Load.equipment_type).contains(equipment_type.lower()))
-    if pickup_date:
-        filters.append(func.date(Load.pickup_datetime) == pickup_date)
-    if filters:
-        stmt = stmt.where(and_(*filters))
+    tiers = [
+        [origin_filter, destination_filter, equipment_filter, pickup_filter],
+        [origin_filter, destination_filter, equipment_filter],
+        [origin_filter, equipment_filter],
+        [equipment_filter],
+        [origin_filter],
+        [],
+    ]
 
-    rows = db.execute(stmt).scalars().all()
-    if not rows:
-        rows = db.execute(select(Load).where(Load.status == "available")).scalars().all()
+    rows: list[Load] = []
+    for tier_filters in tiers:
+        stmt = select(Load).where(Load.status == "available")
+        active_filters = [item for item in tier_filters if item is not None]
+        if active_filters:
+            stmt = stmt.where(*active_filters)
+        rows = list(db.execute(stmt).scalars().all())
+        if rows:
+            break
 
     def score(load: Load) -> int:
         value = 0
@@ -48,6 +56,12 @@ def search_loads(
 
     ranked = sorted(rows, key=score, reverse=True)
     return ranked[:limit]
+
+
+def _contains(column: Any, value: str | None):
+    if not value:
+        return None
+    return func.lower(column).contains(value.lower())
 
 
 def build_load_pitch(load: Load) -> str:
