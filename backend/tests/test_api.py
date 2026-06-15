@@ -486,6 +486,67 @@ def test_call_complete_accepts_new_optional_fields_and_is_idempotent():
     assert matching[0]["call_duration_seconds"] == 240
 
 
+def test_call_complete_duplicate_happyrobot_run_id_updates_canonical_without_crashing():
+    db = TestingSessionLocal()
+    try:
+        first = CallRecord(
+            happyrobot_run_id="smoke_test_run",
+            session_id="old-session-1",
+            mc_number="111111",
+            carrier_name="Old Carrier 1",
+            outcome="unknown",
+            sentiment="unknown",
+            call_summary="old first",
+        )
+        second = CallRecord(
+            happyrobot_run_id="smoke_test_run",
+            session_id="old-session-2",
+            mc_number="222222",
+            carrier_name="Old Carrier 2",
+            outcome="unknown",
+            sentiment="unknown",
+            call_summary="old second",
+        )
+        db.add_all([first, second])
+        db.commit()
+        first_id = first.id
+        second_id = second.id
+    finally:
+        db.close()
+
+    response = client.post(
+        "/api/calls/complete",
+        headers=api_headers(),
+        json={
+            "happyrobot_run_id": "smoke_test_run",
+            "session_id": "updated-session",
+            "mc_number": "135797",
+            "carrier_name": "Updated Carrier",
+            "outcome": "booked",
+            "sentiment": "positive",
+            "call_summary": "updated canonical row",
+            "transfer_successful": True,
+        },
+    )
+    assert response.status_code == 200
+    returned_id = response.json()["call_record_id"]
+    assert returned_id in {first_id, second_id}
+
+    db = TestingSessionLocal()
+    try:
+        records = list(
+            db.execute(select(CallRecord).where(CallRecord.happyrobot_run_id == "smoke_test_run")).scalars()
+        )
+        assert len(records) == 2
+        canonical = next(record for record in records if record.id == returned_id)
+        assert canonical.session_id == "updated-session"
+        assert canonical.carrier_name == "Updated Carrier"
+        assert canonical.call_summary == "updated canonical row"
+        assert canonical.transfer_successful is True
+    finally:
+        db.close()
+
+
 def test_call_complete_empty_rate_strings_and_rounds():
     response = client.post(
         "/api/calls/complete",

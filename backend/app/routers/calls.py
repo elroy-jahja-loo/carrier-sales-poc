@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -22,6 +24,7 @@ VALID_OUTCOMES = {
     "unknown",
 }
 VALID_SENTIMENTS = {"positive", "neutral", "negative", "unknown"}
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["calls"])
 
@@ -33,9 +36,21 @@ def complete_call(payload: CallCompleteRequest, db: Session = Depends(get_db)) -
 
     record = None
     if payload.happyrobot_run_id:
-        record = db.execute(
-            select(CallRecord).where(CallRecord.happyrobot_run_id == payload.happyrobot_run_id)
-        ).scalar_one_or_none()
+        existing_records = list(
+            db.execute(
+                select(CallRecord)
+                .where(CallRecord.happyrobot_run_id == payload.happyrobot_run_id)
+                .order_by(CallRecord.created_at.desc(), CallRecord.id.desc())
+            ).scalars()
+        )
+        if existing_records:
+            record = existing_records[0]
+            if len(existing_records) > 1:
+                logger.warning(
+                    "Multiple call records found for happyrobot_run_id=%s; updating canonical id=%s",
+                    payload.happyrobot_run_id,
+                    record.id,
+                )
 
     values = {
         "happyrobot_run_id": payload.happyrobot_run_id,
