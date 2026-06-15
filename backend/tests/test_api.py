@@ -388,6 +388,8 @@ def test_metrics_accepted_rates_exclude_non_accepted_calls():
     assert payload["average_accepted_rate"] == 1650
     assert payload["average_accepted_loadboard_rate"] == 1500
     assert payload["average_accepted_premium_percent"] == 10
+    assert payload["booked_calls"] == 2
+    assert payload["booking_rate"] == 0.6667
 
 
 def test_offer_evaluate_accepts_happyrobot_string_payload():

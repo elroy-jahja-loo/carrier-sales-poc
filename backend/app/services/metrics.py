@@ -40,7 +40,8 @@ def get_metrics_summary(db: Session) -> dict:
     for sentiment_key, count in sentiment_counts_rows:
         sentiment[str(sentiment_key)] = count
 
-    booked_calls = outcomes.get("booked", 0)
+    successful_calls = outcomes.get("booked", 0) + outcomes.get("transferred", 0)
+    booked_calls = successful_calls
     declined_calls = outcomes.get("declined", 0)
     no_load_found_calls = outcomes.get("no_load_found", 0)
     unresolved_calls = outcomes.get("unresolved", 0)
@@ -77,9 +78,9 @@ def get_metrics_summary(db: Session) -> dict:
         select(func.avg(CallRecord.negotiation_rounds)).where(CallRecord.negotiation_rounds.is_not(None))
     )
     negotiated_calls = db.scalar(select(func.count(CallRecord.id)).where(CallRecord.negotiation_rounds > 0)) or 0
-    negotiation_acceptance_rate = float(booked_calls / negotiated_calls) if negotiated_calls else 0.0
+    negotiation_acceptance_rate = float(successful_calls / negotiated_calls) if negotiated_calls else 0.0
 
-    booking_rate = float(booked_calls / total_calls) if total_calls else 0.0
+    booking_rate = float(successful_calls / total_calls) if total_calls else 0.0
 
     bookings_over_time = _bookings_over_time(db)
 
