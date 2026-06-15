@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.database import Base, get_db
 from app.main import app
 from app.models import Load
+from app.services.fmcsa import _extract_carrier_data, normalize_mc_number
 
 
 TEST_DB_URL = "sqlite+pysqlite:///:memory:"
@@ -148,3 +149,38 @@ def test_metrics_summary_fields_present():
     payload = response.json()
     for key in ["total_calls", "booking_rate", "sentiment", "outcomes"]:
         assert key in payload
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("135797", "135797"),
+        ("MC135797", "135797"),
+        ("MC-135797", "135797"),
+        ("MC 135797", "135797"),
+        ("#135797", "135797"),
+    ],
+)
+def test_normalize_mc_number(raw, expected):
+    assert normalize_mc_number(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"content": {"carrier": {"legalName": "ABC TRUCKING", "dotNumber": "123"}}},
+        {"content": [{"carrier": {"legalName": "ABC TRUCKING", "dotNumber": "123"}}]},
+        {"content": [{"legalName": "ABC TRUCKING", "dotNumber": "123"}]},
+        {"carrier": {"legalName": "ABC TRUCKING", "dotNumber": "123"}},
+        {"legalName": "ABC TRUCKING", "dotNumber": "123"},
+        {"content": [{"allowedToOperate": "Y", "phyCity": "Dallas", "phyState": "TX"}]},
+    ],
+)
+def test_extract_carrier_data_supported_shapes(payload):
+    data = _extract_carrier_data(payload)
+    assert data is not None
+    assert any(key in data for key in ["legalName", "dotNumber", "allowedToOperate", "phyCity"])
+
+
+def test_extract_carrier_data_returns_none_for_unrecognized_payload():
+    assert _extract_carrier_data({"content": {"message": "No carrier found"}}) is None

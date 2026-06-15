@@ -57,9 +57,9 @@ class FmcsaClient:
                 raw_response={"error": "missing_fmcsa_api_key"},
             )
 
-        # TODO: Confirm and adjust FMCSA endpoint path + field mappings for your specific FMCSA API key/docs.
+        # TODO: Confirm and adjust FMCSA response field mappings for your specific FMCSA API key/docs.
         # The base URL is configurable through FMCSA_BASE_URL to simplify updates without code changes.
-        endpoint = f"{self.base_url}/carriers/{normalized_mc}"
+        endpoint = f"{self.base_url.rstrip('/')}/carriers/docket-number/{normalized_mc}"
         params = {"webKey": self.api_key}
 
         try:
@@ -87,6 +87,25 @@ class FmcsaClient:
             )
 
         data = _extract_carrier_data(payload)
+        if data is None:
+            return FmcsaResult(
+                verification_status="not_found",
+                mc_number=normalized_mc,
+                dot_number=None,
+                legal_name=None,
+                dba_name=None,
+                authority_status=None,
+                allowed_to_operate=False,
+                out_of_service=False,
+                eligible=False,
+                reason="No recognizable carrier record was returned by FMCSA.",
+                recommended_agent_message=(
+                    "I could not find an active FMCSA carrier record for that MC number. "
+                    "Please confirm the number or have a representative follow up."
+                ),
+                raw_response=payload if isinstance(payload, dict) else {"payload": payload},
+            )
+
         authority_status = _as_text(data, ["authority_status", "status", "operating_status", "authorityStatus"])
         allowed_to_operate = _as_bool(data, ["allowed_to_operate", "allowedToOperate", "allowed", "authorized"])
         out_of_service = _as_bool(data, ["out_of_service", "outOfService"])
@@ -96,7 +115,7 @@ class FmcsaClient:
 
         status_upper = (authority_status or "").upper()
         is_active = "ACTIVE" in status_upper or status_upper in {"AUTHORIZED", "A"}
-        inferred_allowed = allowed_to_operate or is_active
+        inferred_allowed = allowed_to_operate or (is_active and _has_any_key(data, ["authority_status", "status", "operating_status", "authorityStatus"]))
         eligible = inferred_allowed and not out_of_service
 
         if eligible:
@@ -125,22 +144,57 @@ class FmcsaClient:
         )
 
 
-def _extract_carrier_data(payload: Any) -> dict[str, Any]:
-    if not isinstance(payload, dict):
-        return {}
-    candidates = [
-        payload,
-        payload.get("content", {}),
-        payload.get("carrier", {}),
-        payload.get("data", {}),
-        payload.get("result", {}),
-    ]
-    for candidate in candidates:
-        if isinstance(candidate, dict) and candidate:
-            if "carrier" in candidate and isinstance(candidate["carrier"], dict):
-                return candidate["carrier"]
+def _extract_carrier_data(payload: Any) -> dict[str, Any] | None:
+    for candidate in _carrier_candidates(payload):
+        if _looks_like_carrier(candidate):
             return candidate
-    return {}
+    return None
+
+
+def _carrier_candidates(payload: Any) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            carrier = value.get("carrier")
+            if isinstance(carrier, dict):
+                candidates.append(carrier)
+            candidates.append(value)
+            for key in ("content", "data", "result"):
+                nested = value.get(key)
+                if isinstance(nested, (dict, list)):
+                    visit(nested)
+        elif isinstance(value, list):
+            for item in value:
+                visit(item)
+
+    visit(payload)
+    return candidates
+
+
+def _looks_like_carrier(data: dict[str, Any]) -> bool:
+    return _has_any_key(
+        data,
+        [
+            "legalName",
+            "legal_name",
+            "dotNumber",
+            "dot_number",
+            "allowedToOperate",
+            "allowed_to_operate",
+            "safetyRating",
+            "phyCity",
+            "phyState",
+            "carrierName",
+            "carrier_name",
+            "usdot",
+            "usdOTNumber",
+        ],
+    )
+
+
+def _has_any_key(data: dict[str, Any], keys: list[str]) -> bool:
+    return any(key in data and data[key] is not None for key in keys)
 
 
 def _as_text(data: dict[str, Any], keys: list[str]) -> str | None:
@@ -159,8 +213,8 @@ def _as_bool(data: dict[str, Any], keys: list[str]) -> bool:
         if isinstance(value, bool):
             return value
         text = str(value).strip().lower()
-        if text in {"true", "yes", "1", "active", "authorized", "allowed"}:
+        if text in {"true", "yes", "y", "1", "active", "authorized", "allowed"}:
             return True
-        if text in {"false", "no", "0", "inactive", "unauthorized", "denied"}:
+        if text in {"false", "no", "n", "0", "inactive", "unauthorized", "denied"}:
             return False
     return False
