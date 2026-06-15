@@ -217,15 +217,20 @@ Render is the primary deployment target for this submission.
 
 1. Create a Render Postgres database.
 2. Create backend Web Service from `backend/Dockerfile`.
-3. Leave Render Docker Command blank so Docker uses `CMD ["./start.sh"]`.
-4. Backend startup uses `backend/start.sh`:
+3. Backend Render settings:
+   - Root directory / build context: `backend`
+   - Dockerfile path: `backend/Dockerfile`
+   - Docker Command: blank
+   - Health check path: `/health`
+4. Leave Render Docker Command blank so Docker uses `CMD ["./start.sh"]`.
+5. Backend startup uses `backend/start.sh`:
 
 ```bash
 alembic upgrade head
 uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-10000}"
 ```
 
-5. Configure backend environment variables:
+6. Configure backend environment variables:
    - `APP_ENV=production`
    - `APP_API_KEY=<secret>`
    - `FMCSA_API_KEY=<secret>`
@@ -234,19 +239,22 @@ uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-10000}"
    - `CORS_ORIGINS=https://carrier-sales-frontend.onrender.com`
    - `NEGOTIATION_MAX_ROUNDS=3`
    - `DEFAULT_MAX_RATE_PREMIUM_PERCENT=8`
-6. Optional backend shell commands after deploy:
+7. Optional backend shell commands after deploy:
 
 ```bash
 python -m app.seed
 python -m app.reset_demo_data
 ```
 
-7. Create frontend Web Service from `frontend/Dockerfile`.
-8. Configure frontend environment variables:
+8. Create frontend Web Service from `frontend/Dockerfile`.
+9. Frontend Render settings:
+   - Root directory / build context: `frontend`
+   - Dockerfile path: `frontend/Dockerfile`
+10. Configure frontend environment variables:
    - `SERVER_API_BASE_URL=https://carrier-sales-backend.onrender.com`
    - `SERVER_APP_API_KEY=<same backend API key>`
    - `NEXT_PUBLIC_API_BASE_URL=https://carrier-sales-backend.onrender.com`
-9. Verify deployment:
+11. Verify deployment:
    - `GET https://carrier-sales-backend.onrender.com/health`
    - Remote smoke test passes.
    - Dashboard loads at `https://carrier-sales-frontend.onrender.com/`.
