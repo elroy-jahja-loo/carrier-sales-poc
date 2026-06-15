@@ -47,6 +47,15 @@ class LoadSearchRequest(BaseModel):
     pickup_date: date | None = None
     mc_number: str | None = None
 
+    @field_validator("pickup_date", mode="before")
+    @classmethod
+    def normalize_pickup_date(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
+
 
 class LoadItem(BaseModel):
     load_id: str

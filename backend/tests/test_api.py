@@ -96,6 +96,43 @@ def test_load_search_returns_load():
     assert payload["count"] >= 1
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "origin": "Kansas City, MO",
+            "mc_number": "135797",
+            "destination": "Minneapolis, MN",
+            "pickup_date": "",
+            "equipment_type": "Dry Van",
+        },
+        {
+            "origin": "Kansas City, MO",
+            "mc_number": "135797",
+            "destination": "Minneapolis, MN",
+            "pickup_date": "   ",
+            "equipment_type": "Dry Van",
+        },
+        {
+            "origin": "Kansas City, MO",
+            "mc_number": "135797",
+            "destination": "Minneapolis, MN",
+            "equipment_type": "Dry Van",
+        },
+        {
+            "origin": "Kansas City, MO",
+            "mc_number": "135797",
+            "destination": "Minneapolis, MN",
+            "pickup_date": None,
+            "equipment_type": "Dry Van",
+        },
+    ],
+)
+def test_load_search_accepts_empty_optional_pickup_date(payload):
+    response = client.post("/api/loads/search", headers=api_headers(), json=payload)
+    assert response.status_code == 200
+
+
 def test_offer_evaluate_accepts_within_max():
     response = client.post(
         "/api/offers/evaluate",
